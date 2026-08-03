@@ -24,7 +24,11 @@
       it's a silent explainer, not a reflection of real state. Reuse
       the .demo/.demo-frame/.demo-line/.demo-arrow classes; each tool
       just supplies its own before/after text via two stacked
-      .demo-line elements that crossfade.
+      .demo-line elements that crossfade. For tools where the "before
+      / after" is visual rather than textual (e.g. an icon changing
+      size), use the .icon-demo variant instead: two .demo-icon-slot
+      elements (a/b) stacked and crossfaded the same way, each holding
+      real markup (an actual <svg>, not a text description of one).
     - Action logic goes in a small named function near the bottom
       JS section, wired up with addEventListener — do not use inline
       onclick. Keep each tool's JS self-contained and defensively
@@ -237,10 +241,16 @@
     inset:0;
     display:flex;
     align-items:center;
+    gap:8px;
     font-family:'JetBrains Mono',monospace;
     font-size:13px;
     white-space:nowrap;
     color:var(--text-secondary);
+  }
+
+  .demo-icon{
+    flex-shrink:0;
+    display:block;
   }
 
   .demo-line.a{ animation:demoCrossfadeA 3.2s ease-in-out infinite; }
@@ -337,6 +347,53 @@
   .size-input:focus{
     border-color:var(--accent);
     box-shadow:0 0 0 3px var(--accent-dim);
+  }
+
+  .icon-preview{
+    width:44px;
+    height:44px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:#0d0f12;
+    border:1px dashed var(--border-strong);
+    border-radius:8px;
+    color:var(--accent);
+    overflow:hidden;
+  }
+
+  .icon-preview svg{
+    max-width:40px;
+    max-height:40px;
+  }
+
+  .icon-preview .placeholder-glyph{
+    font-size:14px;
+    color:var(--text-muted);
+  }
+
+  .icon-demo{
+    justify-content:center;
+    height:48px;
+  }
+
+  .demo-icon-slot{
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .demo-icon-slot.a{ animation:demoCrossfadeA 3.2s ease-in-out infinite; color:var(--brass); }
+  .demo-icon-slot.b{ animation:demoCrossfadeB 3.2s ease-in-out infinite; color:var(--accent); }
+
+  .demo-icon-label{
+    font-family:'JetBrains Mono',monospace;
+    font-size:10px;
+    color:currentColor;
+    margin-left:8px;
+    opacity:0.85;
   }
 
   .swap-row{
@@ -539,19 +596,33 @@
         <span class="card-eyebrow">M-03</span>
         <span class="card-tag">svg</span>
       </div>
-      <div class="demo" aria-hidden="true">
-        <div class="demo-frame">
-          <span class="demo-line a">width=<span class="q">"32px"</span></span>
-          <span class="demo-line b">width=<span class="q">"1.5rem"</span></span>
+      <div class="demo icon-demo" aria-hidden="true">
+        <div class="demo-frame icon-demo">
+          <span class="demo-icon-slot a">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 L14 10 L22 12 L14 14 L12 22 L10 14 L2 12 L10 10 Z"/></svg>
+            <span class="demo-icon-label">40px</span>
+          </span>
+          <span class="demo-icon-slot b">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 L14 10 L22 12 L14 14 L12 22 L10 14 L2 12 L10 10 Z"/></svg>
+            <span class="demo-icon-label">1.5rem</span>
+          </span>
         </div>
-        <span class="demo-arrow">⇄</span>
       </div>
       <h2>Icon size</h2>
       <p class="desc">Reads an SVG from your clipboard, sets its width and height, and copies it straight back.</p>
 
-      <div class="swap-field">
-        <label for="icon-size-value">Size</label>
-        <input class="size-input" id="icon-size-value" type="text" inputmode="text" autocomplete="off" spellcheck="false" value="1.5rem" aria-label="Width and height to apply">
+      <div class="swap-row">
+        <div class="swap-field">
+          <label for="icon-size-value">Size</label>
+          <input class="size-input" id="icon-size-value" type="text" inputmode="text" autocomplete="off" spellcheck="false" value="1.5rem" aria-label="Width and height to apply">
+        </div>
+        <span class="swap-arrow">→</span>
+        <div class="swap-field">
+          <label>Preview</label>
+          <div class="icon-preview" id="icon-preview" aria-hidden="true">
+            <span class="placeholder-glyph mono">?</span>
+          </div>
+        </div>
       </div>
 
       <button class="btn" id="btn-icon-size" type="button">
@@ -711,6 +782,7 @@
     const sizeInput = document.getElementById('icon-size-value');
     const btn = document.getElementById('btn-icon-size');
     const status = document.getElementById('status-icon-size');
+    const preview = document.getElementById('icon-preview');
 
     function setStatus(text, mode) {
       status.className = 'status mono' + (mode ? ' ' + mode : '');
@@ -734,6 +806,19 @@
       svg.setAttribute('height', size);
 
       return new XMLSerializer().serializeToString(svg);
+    }
+
+    // Strips script tags and inline event handlers before the markup
+    // ever touches innerHTML — clipboard content isn't trusted content.
+    function sanitizeForPreview(svgMarkup) {
+      return svgMarkup
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/\son\w+="[^"]*"/gi, '')
+        .replace(/\son\w+='[^']*'/gi, '');
+    }
+
+    function renderPreview(svgMarkup) {
+      preview.innerHTML = sanitizeForPreview(svgMarkup);
     }
 
     async function runIconSize() {
@@ -773,6 +858,7 @@
 
         await navigator.clipboard.writeText(updated);
 
+        renderPreview(updated);
         setStatus('width/height set to ' + size + ' — copied back', 'ok');
       } catch (err) {
         const msg = (err && err.name === 'NotAllowedError')
