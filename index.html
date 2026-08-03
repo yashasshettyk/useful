@@ -49,8 +49,33 @@
           result back. Same clipboard-in, clipboard-out pattern as M-01.
     M-03  Icon Size — reads an SVG from the clipboard, sets its
           width/height attributes to a given size (default 1.5rem,
-          editable via a text input), writes the result back. Same
-          clipboard-in, clipboard-out pattern as M-01/M-02.
+          editable via a text input), writes the result back. Preview
+          is always rendered in forced white (fill and/or stroke,
+          auto-detected) so it stays visible regardless of the icon's
+          own colors. Same clipboard-in, clipboard-out pattern as
+          M-01/M-02.
+    M-04  Icon Color — reads an SVG from the clipboard, detects
+          whether it's colored via fill, stroke, or both, and
+          recolors only the attributes actually in use to a
+          user-chosen color. Writes the result back and shows a live
+          preview on a checkerboard swatch (so any chosen color,
+          including dark ones, stays visible).
+
+  Shared SVG helpers (top of the script block, used by M-03 and M-04):
+    - parseSvgElement(svgText) — DOMParser wrapper, returns the root
+      <svg> element or null if unparseable.
+    - analyzeAndApplyColor(svgEl, color) — walks every element in the
+      SVG, overwrites fill/stroke attributes that are actually present
+      (and not "none") with the given color, and reports which were
+      found via { hasFill, hasStroke }. Falls back to a root fill if
+      neither is explicit (the SVG default is a black fill). Reused
+      both to force a preview to white (M-03) and to actually recolor
+      an icon (M-04) — same detection logic, different target color.
+    - svgColorType(hasFill, hasStroke) — turns those booleans into a
+      short label: "fill", "stroke", or "fill + stroke".
+    - sanitizeForPreview(svgMarkup) — strips <script> tags and inline
+      event handlers before any clipboard-sourced markup touches
+      innerHTML.
 
   When asked to add a new tool: add a new <article class="card">
   block in the grid (next M-0N), plus its handler function in the
@@ -358,8 +383,20 @@
     background:#0d0f12;
     border:1px dashed var(--border-strong);
     border-radius:8px;
-    color:var(--accent);
     overflow:hidden;
+  }
+
+  /* checkerboard backing so a recolored icon of ANY color, including
+     dark ones, still reads clearly in the preview swatch */
+  .icon-preview.checker{
+    background-color:#17191d;
+    background-image:
+      linear-gradient(45deg, #2a2d33 25%, transparent 25%),
+      linear-gradient(-45deg, #2a2d33 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #2a2d33 75%),
+      linear-gradient(-45deg, transparent 75%, #2a2d33 75%);
+    background-size:10px 10px;
+    background-position:0 0, 0 5px, 5px -5px, -5px 0;
   }
 
   .icon-preview svg{
@@ -370,6 +407,32 @@
   .icon-preview .placeholder-glyph{
     font-size:14px;
     color:var(--text-muted);
+  }
+
+  .preview-type{
+    font-size:10px;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    color:var(--text-muted);
+    min-height:12px;
+  }
+
+  .color-input{
+    width:104px;
+    height:40px;
+    padding:4px;
+    border:1px solid var(--border-strong);
+    border-radius:8px;
+    background:#0d0f12;
+    cursor:pointer;
+  }
+  .color-input::-webkit-color-swatch-wrapper{ padding:0; }
+  .color-input::-webkit-color-swatch{ border:none; border-radius:5px; }
+  .color-input::-moz-color-swatch{ border:none; border-radius:5px; }
+  .color-input:focus{
+    outline:none;
+    border-color:var(--accent);
+    box-shadow:0 0 0 3px var(--accent-dim);
   }
 
   .icon-demo{
@@ -523,7 +586,7 @@
     <p>Small, single-purpose tools that live in one file. Everything runs locally in this page — nothing you touch here leaves your machine.</p>
   </div>
   <div class="header-meta">
-    <div><span class="dot"></span>3 modules online</div>
+    <div><span class="dot"></span>4 modules online</div>
     <div>runtime: static html</div>
   </div>
 </header>
@@ -622,6 +685,7 @@
           <div class="icon-preview" id="icon-preview" aria-hidden="true">
             <span class="placeholder-glyph mono">?</span>
           </div>
+          <span class="preview-type mono" id="icon-preview-type"></span>
         </div>
       </div>
 
@@ -633,15 +697,115 @@
       </div>
     </article>
 
-    <!-- Add the next tool here as M-04, following the same card shape. -->
+    <!-- ===================== M-04 : Icon Color ===================== -->
+    <article class="card" id="tool-icon-color">
+      <div class="card-top">
+        <span class="card-eyebrow">M-04</span>
+        <span class="card-tag">svg</span>
+      </div>
+      <div class="demo icon-demo" aria-hidden="true">
+        <div class="demo-frame icon-demo">
+          <span class="demo-icon-slot a">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 L14 10 L22 12 L14 14 L12 22 L10 14 L2 12 L10 10 Z"/></svg>
+          </span>
+          <span class="demo-icon-slot b">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 L14 10 L22 12 L14 14 L12 22 L10 14 L2 12 L10 10 Z"/></svg>
+          </span>
+        </div>
+      </div>
+      <h2>Icon color</h2>
+      <p class="desc">Reads an SVG from your clipboard, recolors it — fill, stroke, or both, detected automatically — and copies it straight back.</p>
+
+      <div class="swap-row">
+        <div class="swap-field">
+          <label for="icon-color-value">Color</label>
+          <input class="color-input" id="icon-color-value" type="color" value="#6ee7c8" aria-label="Color to apply">
+        </div>
+        <span class="swap-arrow">→</span>
+        <div class="swap-field">
+          <label>Preview</label>
+          <div class="icon-preview checker" id="icon-color-preview" aria-hidden="true">
+            <span class="placeholder-glyph mono">?</span>
+          </div>
+          <span class="preview-type mono" id="icon-color-preview-type"></span>
+        </div>
+      </div>
+
+      <button class="btn" id="btn-icon-color" type="button">
+        <span class="glyph">›</span> Run on clipboard
+      </button>
+      <div class="status mono" id="status-icon-color">
+        <span class="cursor"></span> idle
+      </div>
+    </article>
+
+    <!-- Add the next tool here as M-05, following the same card shape. -->
     <div class="card placeholder">
-      <p>M-04 — next tool goes here</p>
+      <p>M-05 — next tool goes here</p>
     </div>
 
   </div>
 </main>
 
 <script>
+  // ==================== Shared SVG helpers ====================
+  // Used by M-03 (Icon Size) and M-04 (Icon Color). See the AI
+  // context notes at the top of the file for what each one does.
+
+  function parseSvgElement(svgText) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgText, 'image/svg+xml');
+    const svg = doc.querySelector('svg');
+    const parseError = doc.querySelector('parsererror');
+    return (!svg || parseError) ? null : svg;
+  }
+
+  function analyzeAndApplyColor(svgEl, color) {
+    const nodes = [svgEl].concat(Array.prototype.slice.call(svgEl.querySelectorAll('*')));
+    let hasFill = false;
+    let hasStroke = false;
+
+    nodes.forEach((el) => {
+      const fillAttr = el.getAttribute('fill');
+      const strokeAttr = el.getAttribute('stroke');
+
+      if (fillAttr !== null && fillAttr.toLowerCase() !== 'none') {
+        el.setAttribute('fill', color);
+        hasFill = true;
+      }
+      if (strokeAttr !== null && strokeAttr.toLowerCase() !== 'none') {
+        el.setAttribute('stroke', color);
+        hasStroke = true;
+      }
+    });
+
+    // No explicit fill/stroke found anywhere — SVG's own default is
+    // a black fill, so treat it as a fill-type icon and color the root.
+    if (!hasFill && !hasStroke) {
+      svgEl.setAttribute('fill', color);
+      hasFill = true;
+    }
+
+    return { hasFill: hasFill, hasStroke: hasStroke };
+  }
+
+  function svgColorType(hasFill, hasStroke) {
+    if (hasFill && hasStroke) return 'fill + stroke';
+    if (hasStroke) return 'stroke';
+    return 'fill';
+  }
+
+  function sanitizeForPreview(svgMarkup) {
+    return svgMarkup
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/\son\w+="[^"]*"/gi, '')
+      .replace(/\son\w+='[^']*'/gi, '');
+  }
+
+  function renderSvgPreview(container, svgEl) {
+    container.innerHTML = sanitizeForPreview(new XMLSerializer().serializeToString(svgEl));
+  }
+
   // -------------------- M-01 : Quote Swap --------------------
   (function () {
     const btn = document.getElementById('btn-quote-swap');
@@ -783,42 +947,13 @@
     const btn = document.getElementById('btn-icon-size');
     const status = document.getElementById('status-icon-size');
     const preview = document.getElementById('icon-preview');
+    const previewType = document.getElementById('icon-preview-type');
 
     function setStatus(text, mode) {
       status.className = 'status mono' + (mode ? ' ' + mode : '');
       status.innerHTML = mode === 'busy'
         ? '<span class="cursor"></span> ' + text
         : '&gt; ' + text;
-    }
-
-    // Sets width/height on the root <svg> element, preserving every
-    // other attribute (viewBox, fill, class, etc). Returns null if the
-    // clipboard text isn't a parseable SVG.
-    function applySvgSize(svgText, size) {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(svgText, 'image/svg+xml');
-      const svg = doc.querySelector('svg');
-      const parseError = doc.querySelector('parsererror');
-
-      if (!svg || parseError) return null;
-
-      svg.setAttribute('width', size);
-      svg.setAttribute('height', size);
-
-      return new XMLSerializer().serializeToString(svg);
-    }
-
-    // Strips script tags and inline event handlers before the markup
-    // ever touches innerHTML — clipboard content isn't trusted content.
-    function sanitizeForPreview(svgMarkup) {
-      return svgMarkup
-        .replace(/<script[\s\S]*?<\/script>/gi, '')
-        .replace(/\son\w+="[^"]*"/gi, '')
-        .replace(/\son\w+='[^']*'/gi, '');
-    }
-
-    function renderPreview(svgMarkup) {
-      preview.innerHTML = sanitizeForPreview(svgMarkup);
     }
 
     async function runIconSize() {
@@ -849,17 +984,31 @@
           return;
         }
 
-        const updated = applySvgSize(original, size);
+        const svgEl = parseSvgElement(original);
 
-        if (!updated) {
+        if (!svgEl) {
           setStatus('couldn\'t parse that SVG', 'err');
           return;
         }
 
+        // Real output: only size changes, original colors untouched.
+        svgEl.setAttribute('width', size);
+        svgEl.setAttribute('height', size);
+        const updated = new XMLSerializer().serializeToString(svgEl);
         await navigator.clipboard.writeText(updated);
 
-        renderPreview(updated);
-        setStatus('width/height set to ' + size + ' — copied back', 'ok');
+        // Preview: a separate clone, forced to white so it's always
+        // visible on the dark card regardless of the icon's own
+        // colors. analyzeAndApplyColor detects fill vs stroke vs both
+        // so it overrides the right attribute(s).
+        const previewEl = svgEl.cloneNode(true);
+        const result = analyzeAndApplyColor(previewEl, '#ffffff');
+        const typeLabel = svgColorType(result.hasFill, result.hasStroke);
+
+        renderSvgPreview(preview, previewEl);
+        previewType.textContent = typeLabel;
+
+        setStatus('width/height set to ' + size + ' (' + typeLabel + ' icon) — copied back', 'ok');
       } catch (err) {
         const msg = (err && err.name === 'NotAllowedError')
           ? 'clipboard permission denied — allow it and try again'
@@ -871,6 +1020,75 @@
     }
 
     btn.addEventListener('click', runIconSize);
+  })();
+
+  // -------------------- M-04 : Icon Color --------------------
+  (function () {
+    const colorInput = document.getElementById('icon-color-value');
+    const btn = document.getElementById('btn-icon-color');
+    const status = document.getElementById('status-icon-color');
+    const preview = document.getElementById('icon-color-preview');
+    const previewType = document.getElementById('icon-color-preview-type');
+
+    function setStatus(text, mode) {
+      status.className = 'status mono' + (mode ? ' ' + mode : '');
+      status.innerHTML = mode === 'busy'
+        ? '<span class="cursor"></span> ' + text
+        : '&gt; ' + text;
+    }
+
+    async function runIconColor() {
+      const color = colorInput.value;
+
+      if (!navigator.clipboard || !navigator.clipboard.readText) {
+        setStatus('clipboard API unavailable — use https or localhost', 'err');
+        return;
+      }
+
+      btn.disabled = true;
+      setStatus('reading clipboard…', 'busy');
+
+      try {
+        const original = await navigator.clipboard.readText();
+
+        if (!original) {
+          setStatus('clipboard is empty', 'err');
+          return;
+        }
+        if (original.indexOf('<svg') === -1) {
+          setStatus('clipboard doesn\'t look like an SVG', 'err');
+          return;
+        }
+
+        const svgEl = parseSvgElement(original);
+
+        if (!svgEl) {
+          setStatus('couldn\'t parse that SVG', 'err');
+          return;
+        }
+
+        // Detect fill / stroke / both and recolor only what's in use.
+        const result = analyzeAndApplyColor(svgEl, color);
+        const typeLabel = svgColorType(result.hasFill, result.hasStroke);
+
+        const updated = new XMLSerializer().serializeToString(svgEl);
+        await navigator.clipboard.writeText(updated);
+
+        renderSvgPreview(preview, svgEl);
+        previewType.textContent = typeLabel;
+
+        setStatus(typeLabel + ' recolored to ' + color + ' — copied back', 'ok');
+      } catch (err) {
+        const msg = (err && err.name === 'NotAllowedError')
+          ? 'clipboard permission denied — allow it and try again'
+          : 'failed: ' + (err && err.message ? err.message : 'unknown error');
+        setStatus(msg, 'err');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    btn.addEventListener('click', runIconColor);
   })();
 </script>
 
