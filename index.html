@@ -39,6 +39,10 @@
     M-01  Quote Swap — reads the OS clipboard, replaces all double
           quotes (") with single quotes ('), writes the result back
           to the clipboard. No visible paste/copy step for the user.
+    M-02  Custom Swap — two single-character "OTP style" inputs
+          (From / To). Reads the clipboard, replaces every occurrence
+          of the "From" character with the "To" character, writes the
+          result back. Same clipboard-in, clipboard-out pattern as M-01.
 
   When asked to add a new tool: add a new <article class="card">
   block in the grid (next M-0N), plus its handler function in the
@@ -310,6 +314,55 @@
     color:var(--text-secondary);
   }
 
+  .swap-row{
+    display:flex;
+    align-items:center;
+    gap:12px;
+  }
+
+  .swap-field{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;
+  }
+
+  .swap-field label{
+    font-family:'JetBrains Mono',monospace;
+    font-size:10px;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color:var(--text-muted);
+  }
+
+  .otp-input{
+    width:44px;
+    height:44px;
+    text-align:center;
+    font-family:'JetBrains Mono',monospace;
+    font-size:18px;
+    font-weight:600;
+    color:var(--text-primary);
+    background:#0d0f12;
+    border:1px solid var(--border-strong);
+    border-radius:8px;
+    outline:none;
+    caret-color:var(--accent);
+    transition:border-color .15s ease, box-shadow .15s ease;
+  }
+
+  .otp-input:focus{
+    border-color:var(--accent);
+    box-shadow:0 0 0 3px var(--accent-dim);
+  }
+
+  .swap-arrow{
+    font-family:'JetBrains Mono',monospace;
+    font-size:16px;
+    color:var(--text-muted);
+    margin-top:16px;
+  }
+
   .btn{
     appearance:none;
     border:1px solid var(--border-strong);
@@ -388,7 +441,7 @@
     <p>Small, single-purpose tools that live in one file. Everything runs locally in this page — nothing you touch here leaves your machine.</p>
   </div>
   <div class="header-meta">
-    <div><span class="dot"></span>1 module online</div>
+    <div><span class="dot"></span>2 modules online</div>
     <div>runtime: static html</div>
   </div>
 </header>
@@ -419,9 +472,45 @@
       </div>
     </article>
 
-    <!-- Add the next tool here as M-02, following the same card shape. -->
+    <!-- ===================== M-02 : Custom Swap ===================== -->
+    <article class="card" id="tool-custom-swap">
+      <div class="card-top">
+        <span class="card-eyebrow">M-02</span>
+        <span class="card-tag">clipboard</span>
+      </div>
+      <div class="demo" aria-hidden="true">
+        <div class="demo-frame">
+          <span class="demo-line a">foo<span class="q">_</span>bar</span>
+          <span class="demo-line b">foo<span class="q">-</span>bar</span>
+        </div>
+        <span class="demo-arrow">⇄</span>
+      </div>
+      <h2>Custom swap</h2>
+      <p class="desc">Pick any character to swap for another, then run it on your clipboard — every occurrence gets replaced and copied straight back.</p>
+
+      <div class="swap-row">
+        <div class="swap-field">
+          <label for="swap-from">From</label>
+          <input class="otp-input" id="swap-from" type="text" inputmode="text" maxlength="1" autocomplete="off" spellcheck="false" aria-label="Character to replace">
+        </div>
+        <span class="swap-arrow">→</span>
+        <div class="swap-field">
+          <label for="swap-to">To</label>
+          <input class="otp-input" id="swap-to" type="text" inputmode="text" maxlength="1" autocomplete="off" spellcheck="false" aria-label="Replacement character">
+        </div>
+      </div>
+
+      <button class="btn" id="btn-custom-swap" type="button">
+        <span class="glyph">›</span> Run on clipboard
+      </button>
+      <div class="status mono" id="status-custom-swap">
+        <span class="cursor"></span> idle
+      </div>
+    </article>
+
+    <!-- Add the next tool here as M-03, following the same card shape. -->
     <div class="card placeholder">
-      <p>M-02 — next tool goes here</p>
+      <p>M-03 — next tool goes here</p>
     </div>
 
   </div>
@@ -484,6 +573,84 @@
 
   // Next tool's script block goes here, wrapped the same way —
   // an IIFE with its own setStatus helper, wired via addEventListener.
+
+  // -------------------- M-02 : Custom Swap --------------------
+  (function () {
+    const fromInput = document.getElementById('swap-from');
+    const toInput = document.getElementById('swap-to');
+    const btn = document.getElementById('btn-custom-swap');
+    const status = document.getElementById('status-custom-swap');
+
+    // Keep the OTP-style boxes honest: always exactly one character,
+    // and select-all on focus so re-typing overwrites instantly.
+    [fromInput, toInput].forEach((el) => {
+      el.addEventListener('input', () => {
+        if (el.value.length > 1) el.value = el.value.slice(-1);
+      });
+      el.addEventListener('focus', () => el.select());
+    });
+
+    function setStatus(text, mode) {
+      status.className = 'status mono' + (mode ? ' ' + mode : '');
+      status.innerHTML = mode === 'busy'
+        ? '<span class="cursor"></span> ' + text
+        : '&gt; ' + text;
+    }
+
+    async function runCustomSwap() {
+      const from = fromInput.value;
+      const to = toInput.value;
+
+      if (!from) {
+        setStatus('enter a character in "From"', 'err');
+        fromInput.focus();
+        return;
+      }
+      if (!to) {
+        setStatus('enter a character in "To"', 'err');
+        toInput.focus();
+        return;
+      }
+      if (!navigator.clipboard || !navigator.clipboard.readText) {
+        setStatus('clipboard API unavailable — use https or localhost', 'err');
+        return;
+      }
+
+      btn.disabled = true;
+      setStatus('reading clipboard…', 'busy');
+
+      try {
+        const original = await navigator.clipboard.readText();
+
+        if (!original) {
+          setStatus('clipboard is empty', 'err');
+          return;
+        }
+
+        const matchCount = original.split(from).length - 1;
+
+        if (matchCount === 0) {
+          setStatus('no "' + from + '" found — clipboard unchanged', 'err');
+          return;
+        }
+
+        const updated = original.split(from).join(to);
+
+        await navigator.clipboard.writeText(updated);
+
+        setStatus(matchCount + ' occurrence' + (matchCount === 1 ? '' : 's') + ' of "' + from + '" → "' + to + '" — copied back', 'ok');
+      } catch (err) {
+        const msg = (err && err.name === 'NotAllowedError')
+          ? 'clipboard permission denied — allow it and try again'
+          : 'failed: ' + (err && err.message ? err.message : 'unknown error');
+        setStatus(msg, 'err');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    btn.addEventListener('click', runCustomSwap);
+  })();
 </script>
 
 </body>
