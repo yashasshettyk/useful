@@ -43,6 +43,10 @@
           (From / To). Reads the clipboard, replaces every occurrence
           of the "From" character with the "To" character, writes the
           result back. Same clipboard-in, clipboard-out pattern as M-01.
+    M-03  Icon Size — reads an SVG from the clipboard, sets its
+          width/height attributes to a given size (default 1.5rem,
+          editable via a text input), writes the result back. Same
+          clipboard-in, clipboard-out pattern as M-01/M-02.
 
   When asked to add a new tool: add a new <article class="card">
   block in the grid (next M-0N), plus its handler function in the
@@ -314,6 +318,27 @@
     color:var(--text-secondary);
   }
 
+  .size-input{
+    width:104px;
+    height:40px;
+    text-align:center;
+    font-family:'JetBrains Mono',monospace;
+    font-size:14px;
+    font-weight:600;
+    color:var(--text-primary);
+    background:#0d0f12;
+    border:1px solid var(--border-strong);
+    border-radius:8px;
+    outline:none;
+    caret-color:var(--accent);
+    transition:border-color .15s ease, box-shadow .15s ease;
+  }
+
+  .size-input:focus{
+    border-color:var(--accent);
+    box-shadow:0 0 0 3px var(--accent-dim);
+  }
+
   .swap-row{
     display:flex;
     align-items:center;
@@ -441,7 +466,7 @@
     <p>Small, single-purpose tools that live in one file. Everything runs locally in this page — nothing you touch here leaves your machine.</p>
   </div>
   <div class="header-meta">
-    <div><span class="dot"></span>2 modules online</div>
+    <div><span class="dot"></span>3 modules online</div>
     <div>runtime: static html</div>
   </div>
 </header>
@@ -508,9 +533,38 @@
       </div>
     </article>
 
-    <!-- Add the next tool here as M-03, following the same card shape. -->
+    <!-- ===================== M-03 : Icon Size ===================== -->
+    <article class="card" id="tool-icon-size">
+      <div class="card-top">
+        <span class="card-eyebrow">M-03</span>
+        <span class="card-tag">svg</span>
+      </div>
+      <div class="demo" aria-hidden="true">
+        <div class="demo-frame">
+          <span class="demo-line a">width=<span class="q">"32px"</span></span>
+          <span class="demo-line b">width=<span class="q">"1.5rem"</span></span>
+        </div>
+        <span class="demo-arrow">⇄</span>
+      </div>
+      <h2>Icon size</h2>
+      <p class="desc">Reads an SVG from your clipboard, sets its width and height, and copies it straight back.</p>
+
+      <div class="swap-field">
+        <label for="icon-size-value">Size</label>
+        <input class="size-input" id="icon-size-value" type="text" inputmode="text" autocomplete="off" spellcheck="false" value="1.5rem" aria-label="Width and height to apply">
+      </div>
+
+      <button class="btn" id="btn-icon-size" type="button">
+        <span class="glyph">›</span> Run on clipboard
+      </button>
+      <div class="status mono" id="status-icon-size">
+        <span class="cursor"></span> idle
+      </div>
+    </article>
+
+    <!-- Add the next tool here as M-04, following the same card shape. -->
     <div class="card placeholder">
-      <p>M-03 — next tool goes here</p>
+      <p>M-04 — next tool goes here</p>
     </div>
 
   </div>
@@ -650,6 +704,87 @@
     }
 
     btn.addEventListener('click', runCustomSwap);
+  })();
+
+  // -------------------- M-03 : Icon Size --------------------
+  (function () {
+    const sizeInput = document.getElementById('icon-size-value');
+    const btn = document.getElementById('btn-icon-size');
+    const status = document.getElementById('status-icon-size');
+
+    function setStatus(text, mode) {
+      status.className = 'status mono' + (mode ? ' ' + mode : '');
+      status.innerHTML = mode === 'busy'
+        ? '<span class="cursor"></span> ' + text
+        : '&gt; ' + text;
+    }
+
+    // Sets width/height on the root <svg> element, preserving every
+    // other attribute (viewBox, fill, class, etc). Returns null if the
+    // clipboard text isn't a parseable SVG.
+    function applySvgSize(svgText, size) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(svgText, 'image/svg+xml');
+      const svg = doc.querySelector('svg');
+      const parseError = doc.querySelector('parsererror');
+
+      if (!svg || parseError) return null;
+
+      svg.setAttribute('width', size);
+      svg.setAttribute('height', size);
+
+      return new XMLSerializer().serializeToString(svg);
+    }
+
+    async function runIconSize() {
+      const size = sizeInput.value.trim();
+
+      if (!size) {
+        setStatus('enter a size, e.g. 1.5rem or 24px', 'err');
+        sizeInput.focus();
+        return;
+      }
+      if (!navigator.clipboard || !navigator.clipboard.readText) {
+        setStatus('clipboard API unavailable — use https or localhost', 'err');
+        return;
+      }
+
+      btn.disabled = true;
+      setStatus('reading clipboard…', 'busy');
+
+      try {
+        const original = await navigator.clipboard.readText();
+
+        if (!original) {
+          setStatus('clipboard is empty', 'err');
+          return;
+        }
+        if (original.indexOf('<svg') === -1) {
+          setStatus('clipboard doesn\'t look like an SVG', 'err');
+          return;
+        }
+
+        const updated = applySvgSize(original, size);
+
+        if (!updated) {
+          setStatus('couldn\'t parse that SVG', 'err');
+          return;
+        }
+
+        await navigator.clipboard.writeText(updated);
+
+        setStatus('width/height set to ' + size + ' — copied back', 'ok');
+      } catch (err) {
+        const msg = (err && err.name === 'NotAllowedError')
+          ? 'clipboard permission denied — allow it and try again'
+          : 'failed: ' + (err && err.message ? err.message : 'unknown error');
+        setStatus(msg, 'err');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    btn.addEventListener('click', runIconSize);
   })();
 </script>
 
